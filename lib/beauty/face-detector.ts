@@ -3,12 +3,12 @@ import { MovementTracker, type Box } from './movement';
 import type { FaceDetector } from '@mediapipe/tasks-vision';
 export type Detection = { box: Box | null; moving: boolean; count: number };
 export async function createFaceDetector() {
-  // Only the model and WASM are fetched. Camera frames never leave this device.
   const initialization = (async () => {
     const { FaceDetector, FilesetResolver } = await import('@mediapipe/tasks-vision');
-    const files = await FilesetResolver.forVisionTasks('/mediapipe/wasm');
+    const base = document.baseURI;
+    const files = await FilesetResolver.forVisionTasks(new URL('mediapipe/wasm', base).href);
     return FaceDetector.createFromOptions(files, {
-      baseOptions: { modelAssetPath: '/models/blaze_face_short_range.tflite', delegate: 'CPU' },
+      baseOptions: { modelAssetPath: new URL('models/blaze_face_short_range.tflite', base).href, delegate: 'CPU' },
       runningMode: 'VIDEO', minDetectionConfidence: .6,
     });
   })();
@@ -23,7 +23,6 @@ export function watchFace(detector: FaceDetector, video: HTMLVideoElement, onRes
   let staleCleared = false;
   const tick = (now: number) => {
     if (stopped) return;
-    // Cap inference at 10 FPS; CSS animations remain smooth and independent.
     if (video.readyState >= 2 && video.videoWidth && now - lastRun >= 100 && video.currentTime !== lastFrame) {
       lastFrame = video.currentTime; lastRun = now; staleCleared = false;
       try {
@@ -34,11 +33,7 @@ export function watchFace(detector: FaceDetector, video: HTMLVideoElement, onRes
         onResult({ box, moving: movement.update(box, now), count: detections.length });
       } catch { stopped = true; onError(); return; }
     }
-    if (now - lastRun > 1000 && !staleCleared) {
-      staleCleared = true;
-      movement.update(null, now);
-      onResult({ box: null, moving: false, count: 0 });
-    }
+    if (!staleCleared && now - lastRun > 500) { staleCleared = true; onResult({ box: null, moving: false, count: 0 }); }
     frame = requestAnimationFrame(tick);
   };
   frame = requestAnimationFrame(tick);
